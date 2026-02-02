@@ -347,8 +347,11 @@ class GreeCloudApi:
     async def get_all_devices(self) -> List[CloudDeviceInfo]:
         """Get all devices from all homes
         
+        Filters out duplicate devices with same key. When duplicates exist,
+        keeps the one with MAC ending in '00' (responsive) and hides the one without.
+        
         Returns:
-            List of all CloudDeviceInfo objects across all homes
+            List of all CloudDeviceInfo objects across all homes (deduplicated)
         """
         homes = await self.get_homes()
         all_devices = []
@@ -357,5 +360,53 @@ class GreeCloudApi:
             devices = await self.get_devices(home.id)
             all_devices.extend(devices)
         
-        _LOGGER.info(f"Found total of {len(all_devices)} devices across all homes")
-        return all_devices
+        # Filter duplicates: when same key exists with MACs where one ends with '00'
+        filtered_devices = self._filter_duplicate_devices(all_devices)
+        
+        if len(filtered_devices) < len(all_devices):
+            _LOGGER.info(f"Filtered out {len(all_devices) - len(filtered_devices)} duplicate device(s)")
+        
+        _LOGGER.info(f"Found total of {len(filtered_devices)} devices across all homes")
+        return filtered_devices
+    
+    def _filter_duplicate_devices(self, devices: List[CloudDeviceInfo]) -> List[CloudDeviceInfo]:
+        """Filter out duplicate devices with same key
+        
+        When devices share the same encryption key but have different MACs
+        (one normal, one ending with '00'), keep only the one with '00'.
+        The device without '00' suffix doesn't respond to commands.
+        
+        Args:
+            devices: List of devices to filter
+            
+        Returns:
+            Filtered list without duplicates
+        """
+        # Group devices by encryption key
+        key_groups: Dict[str, List[CloudDeviceInfo]] = {}
+        for device in devices:
+            if device.key not in key_groups:
+                key_groups[device.key] = []
+            key_groups[device.key].append(device)
+        
+        filtered = []
+        for key, group in key_groups.items():
+            if len(group) == 1:
+                # No duplicates, keep as is
+                filtered.append(group[0])
+            else:
+                # Multiple devices with same key - filter by MAC
+                # Prefer device WITH '00' suffix (responsive device)
+                devices_with_00 = [d for d in group if d.mac.endswith('00') and len(d.mac) > 12]
+                devices_without_00 = [d for d in group if not (d.mac.endswith('00') and len(d.mac) > 12)]
+                
+                if devices_with_00:
+                    # Keep device(s) with '00' suffix
+                    filtered.extend(devices_with_00)
+                    if devices_without_00:
+                        _LOGGER.debug(f"Filtering out non-responsive device(s) without '00': {[d.mac for d in devices_without_00]}")
+                else:
+                    # No device with '00' found, keep all (shouldn't happen but be safe)
+                    filtered.extend(group)
+        
+        return filtered

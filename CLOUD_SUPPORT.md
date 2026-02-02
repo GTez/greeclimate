@@ -206,7 +206,7 @@ device.target_temperature = 24
 await device.push_state_update()
 ```
 
-### Parent/Child Devices
+### Parent/Child Devices and Duplicate Filtering
 
 Commercial units may have parent/child hierarchy:
 
@@ -216,6 +216,8 @@ Commercial units may have parent/child hierarchy:
 - **Target (tcid)**: Use child MAC
 
 This is handled automatically by `CloudDevice`.
+
+**Important**: Cloud API sometimes returns duplicate devices with the same encryption key but different MAC addresses (one normal, one with '00' appended). The device **without** '00' suffix doesn't respond to commands. The `CloudDiscovery.scan()` method automatically filters out these non-responsive duplicates, keeping only the device with '00' suffix that actually responds to commands.
 
 ### Cipher Versions
 

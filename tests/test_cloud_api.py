@@ -149,6 +149,93 @@ class TestCloudApi:
             assert devices[0].mac == 'aabbccddeeff'
             assert devices[0].key == 'testkey123456789'
 
+    @pytest.mark.asyncio
+    async def test_get_all_devices_filters_duplicates(self, api):
+        """Test that get_all_devices filters duplicate devices, keeping the one with '00' MAC suffix"""
+        api.user_id = 12345
+        api.token = 'test_token'
+
+        # Mock get_homes to return one home
+        with patch.object(api, 'get_homes', new=AsyncMock()) as mock_homes:
+            mock_homes.return_value = [CloudHome(id=1, name='Home 1')]
+
+            # Mock get_devices to return duplicates (same key, different MACs)
+            with patch.object(api, 'get_devices', new=AsyncMock()) as mock_devices:
+                mock_devices.return_value = [
+                    CloudDeviceInfo(
+                        name='AC Non-Responsive',
+                        mac='c03937a616ab',  # MAC without '00' - doesn't respond
+                        key='sharedkey123',
+                        online=True
+                    ),
+                    CloudDeviceInfo(
+                        name='AC Responsive',
+                        mac='c03937a616ab00',  # MAC with '00' suffix - responds
+                        key='sharedkey123',  # Same key as above
+                        online=True
+                    ),
+                    CloudDeviceInfo(
+                        name='AC Other',
+                        mac='aabbccddeeff',  # Different device
+                        key='differentkey456',
+                        online=True
+                    )
+                ]
+
+                devices = await api.get_all_devices()
+
+                # Should filter out the device without '00' and keep the one with '00'
+                assert len(devices) == 2
+                assert not any(d.mac == 'c03937a616ab' for d in devices)
+                assert any(d.mac == 'c03937a616ab00' for d in devices)
+                assert any(d.mac == 'aabbccddeeff' for d in devices)
+
+    @pytest.mark.asyncio
+    async def test_filter_duplicate_devices_no_duplicates(self, api):
+        """Test _filter_duplicate_devices with no duplicates"""
+        devices = [
+            CloudDeviceInfo(name='AC 1', mac='aabbccddeeff', key='key1'),
+            CloudDeviceInfo(name='AC 2', mac='112233445566', key='key2'),
+        ]
+
+        filtered = api._filter_duplicate_devices(devices)
+        assert len(filtered) == 2
+
+    @pytest.mark.asyncio
+    async def test_filter_duplicate_devices_with_00_suffix(self, api):
+        """Test _filter_duplicate_devices keeps device with '00' suffix"""
+        devices = [
+            CloudDeviceInfo(name='Non-Responsive', mac='c03937a616ab', key='sharedkey'),
+            CloudDeviceInfo(name='Responsive', mac='c03937a616ab00', key='sharedkey'),
+        ]
+
+        filtered = api._filter_duplicate_devices(devices)
+        assert len(filtered) == 1
+        assert filtered[0].mac == 'c03937a616ab00'
+
+    @pytest.mark.asyncio
+    async def test_filter_duplicate_devices_only_with_00(self, api):
+        """Test _filter_duplicate_devices when only device with '00' exists"""
+        devices = [
+            CloudDeviceInfo(name='Device with 00', mac='c03937a616ab00', key='key1'),
+        ]
+
+        # Should keep it since there's no duplicate
+        filtered = api._filter_duplicate_devices(devices)
+        assert len(filtered) == 1
+
+    @pytest.mark.asyncio
+    async def test_filter_duplicate_devices_multiple_without_00(self, api):
+        """Test _filter_duplicate_devices with multiple devices without '00' sharing key"""
+        devices = [
+            CloudDeviceInfo(name='AC 1', mac='aabbccddeeff', key='sharedkey'),
+            CloudDeviceInfo(name='AC 2', mac='112233445566', key='sharedkey'),
+        ]
+
+        # Both without '00' suffix, should keep both (no device with '00' to prefer)
+        filtered = api._filter_duplicate_devices(devices)
+        assert len(filtered) == 2
+
 
 class TestCloudDataClasses:
     """Test cloud data classes"""
