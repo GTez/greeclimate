@@ -93,7 +93,6 @@ class GreeMqttClient:
         
         # Generate random client ID (similar to Gree+ app)
         self.client_id = self._generate_client_id()
-        self.sequence_number = 0
         
         self._client: Optional[aiomqtt.Client] = None
         self._connected = False
@@ -246,18 +245,16 @@ class GreeMqttClient:
         # Create message
         message = {
             'cid': str(random.randint(1000000000, 9999999999)),
-            'i': self.sequence_number,
+            'i': 0,
             'pack': encrypted,
             't': 'pack',
             'tcid': target_device_mac or device_mac,
             'uid': self.user_id,
         }
-        
+
         # Add tag if present (GCM encryption)
         if tag:
             message['tag'] = tag
-        
-        self.sequence_number += 1
         
         topic = f"request/{parent_mac}"
         payload = json.dumps(message)

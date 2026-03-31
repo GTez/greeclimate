@@ -272,11 +272,11 @@ class CloudDevice(Device):
             self._child_mac
         )
         
-        # Wait for response
+        # Wait for response (short timeout - some devices don't ack)
         try:
-            await asyncio.wait_for(self._response_event.wait(), timeout=self._command_timeout)
+            await asyncio.wait_for(self._response_event.wait(), timeout=2.0)
         except asyncio.TimeoutError:
-            _LOGGER.warning(f"Timeout waiting for command response from {self.device_info.name}")
+            _LOGGER.debug(f"No ack from {self.device_info.name} (command may still have been executed)")
         finally:
             self._response_event = None
     
@@ -286,8 +286,23 @@ class CloudDevice(Device):
         if self._parent_mac not in topic and self._child_mac not in topic:
             return
         
-        # Handle response messages (command acknowledgments)
+        # Handle response messages (command acknowledgments / state responses)
         if 'response/' in topic:
+            if message.pack:
+                try:
+                    decrypted = self.device_cipher.decrypt(message.pack)
+                    _LOGGER.debug(f"Response decrypted: {decrypted}")
+                    if decrypted.get('t') == 'dat':
+                        cols = decrypted.get('cols', [])
+                        dat = decrypted.get('dat', [])
+                        if cols and dat and len(cols) == len(dat):
+                            data = dict(zip(cols, dat))
+                            if self._response_event:
+                                self._response_data = data
+                            else:
+                                self.handle_state_update(**data)
+                except Exception as e:
+                    _LOGGER.debug(f"Could not decrypt response: {e}")
             if self._response_event:
                 self._response_event.set()
             return
@@ -319,23 +334,6 @@ class CloudDevice(Device):
         # Handle connect messages
         if 'connect/' in topic:
             _LOGGER.info(f"Device {self.device_info.name} connected to cloud")
-    
-    @property
-    def current_temperature(self) -> Optional[int]:
-        """Get current temperature
-        
-        IMPORTANT: Cloud devices do NOT use temperature offset.
-        Override parent class to return raw values.
-        """
-        prop = self.get_property(Props.TEMP_SENSOR)
-        bit = self.get_property(Props.TEMP_BIT)
-        
-        if prop is not None:
-            bit = bit if bit is not None else 0
-            # Cloud MQTT returns raw temperature values (no offset)
-            return self._convert_to_units(prop, bit)
-        
-        return self.target_temperature
     
     async def close(self):
         """Close device and cleanup resources"""
