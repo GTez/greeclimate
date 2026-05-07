@@ -75,15 +75,16 @@ asyncio.run(main())
 
 ### Available Cloud Servers
 
-- `Europe` - https://eugrih.gree.com
-- `North American` - https://nagrih.gree.com
-- `East South Asia` - https://hkgrih.gree.com
-- `South American` - https://sagrih.gree.com
-- `China Mainland` - https://grih.gree.com
-- `India` - https://ingrih.gree.com
-- `Middle East` - https://megrih.gree.com
 - `Australia` - https://augrih.gree.com
-- `Russian server` - https://rugrih.gree.com
+- `China Mainland` - https://grih.gree.com
+- `East South Asia` - https://hkgrih.gree.com
+- `Europe` - https://eugrih.gree.com
+- `India` - https://ingrih.gree.com
+- `Latin American` - https://lagrih.gree.com
+- `Middle East` - https://megrih.gree.com
+- `North American` - https://nagrih.gree.com
+- `Russia` - https://rugrih.gree.com
+- `South American` - https://sagrih.gree.com
 
 ### Advanced Example with Manual Setup
 
