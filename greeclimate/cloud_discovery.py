@@ -103,15 +103,7 @@ class CloudDiscovery(Taskable):
         
         _LOGGER.info(f"Successfully authenticated as user {credentials.user_id}")
         
-        # Determine MQTT server based on region
-        mqtt_server_map = {
-            'Europe': 'mqtt-eu.gree.com',
-            'North American': 'mqtt-us.gree.com',
-            'East South Asia': 'mqtt-as.gree.com',
-            'Middle East': 'mqtt-me.gree.com',
-            'Latin American': 'mqtt-la.gree.com',
-        }
-        mqtt_server = mqtt_server_map.get(self.server, 'mqtt-eu.gree.com')
+        mqtt_server = GreeMqttClient.MQTT_SERVERS.get(self.server, 'mqtt-eu.gree.com')
         
         # Create MQTT client with correct server and port
         self._mqtt_client = GreeMqttClient(
