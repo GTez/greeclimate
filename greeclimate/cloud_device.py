@@ -285,6 +285,14 @@ class CloudDevice(Device):
         # Check if message is for this device
         if self._parent_mac not in topic and self._child_mac not in topic:
             return
+
+        # Cascade routing: heads behind one gateway share the parent topic and
+        # encryption key, so only accept child-scoped status/response addressed
+        # to THIS head (otherwise siblings cross-apply each other's state).
+        if getattr(self, '_is_cascade', False) and (topic.startswith('status/') or topic.startswith('response/')):
+            _parts = topic.split('/')
+            if not (len(_parts) >= 3 and _parts[2] == self._child_mac):
+                return
         
         # Handle response messages (command acknowledgments / state responses)
         if 'response/' in topic:

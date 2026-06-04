@@ -28,6 +28,7 @@ class CloudDeviceInfo:
     model: Optional[str] = None
     version: Optional[str] = None
     online: bool = True
+    parent_mac: Optional[str] = None
 
 
 @dataclass
@@ -367,6 +368,17 @@ class GreeCloudApi:
         if len(filtered_devices) < len(all_devices):
             _LOGGER.info(f"Filtered out {len(all_devices) - len(filtered_devices)} duplicate device(s)")
 
+        # Cascade/multi-zone support: a wifi gateway (non-'00' MAC) fronts
+        # several indoor heads sharing its encryption key. Stamp each head's
+        # gateway MAC so the device can address the gateway's MQTT topic.
+        _gw_by_key = {}
+        for _d in all_devices:
+            if not (_d.mac.endswith('00') and len(_d.mac) > 12):
+                _gw_by_key[_d.key] = _d.mac
+        for _d in filtered_devices:
+            if _d.mac.endswith('00') and len(_d.mac) > 12 and _gw_by_key.get(_d.key) and _gw_by_key[_d.key] != _d.mac:
+                _d.parent_mac = _gw_by_key[_d.key]
+                _LOGGER.info(f"Cascade: head {_d.name} ({_d.mac}) -> gateway {_d.parent_mac}")
         _LOGGER.info(f"Found total of {len(filtered_devices)} devices across all homes")
         return filtered_devices
 

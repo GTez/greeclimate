@@ -412,8 +412,12 @@ class Device(DeviceProtocol2, Taskable):
     def target_temperature(self) -> Optional[int]:
         temset = self.get_property(Props.TEMP_SET)
         temrec = self.get_property(Props.TEMP_BIT)
-        if temset is None or temrec is None:
+        if temset is None:
             return None
+        # Cascade/commercial heads report SetTem without TemRec (a Fahrenheit
+        # half-degree bit); default it to 0 so the Celsius setpoint still shows.
+        if temrec is None:
+            temrec = 0
         return self._convert_to_units(temset, temrec)
 
     @target_temperature.setter
