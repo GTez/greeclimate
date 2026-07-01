@@ -257,21 +257,30 @@ class CloudDevice(Device):
         
         # Setup response event
         self._response_event = asyncio.Event()
-        
+
         # Send command
         command = {
             't': 'cmd',
             'opt': opt,
             'p': p
         }
-        
+
+        # Cascade/multi-zone routing: on gateway-fronted systems the outer
+        # envelope's tcid is applied by the GATEWAY to itself, not relayed to
+        # the addressed head. The head only obeys a command that also carries
+        # its own MAC as `sub` INSIDE the encrypted pack. Verified on a live
+        # system: without `sub` the setpoint never reaches the indoor unit;
+        # with it, the head applies the change and pushes back new state.
+        if getattr(self, '_is_cascade', False):
+            command['sub'] = self._child_mac
+
         await self._mqtt_client.publish_command(
             self._parent_mac,
             command,
             self.device_cipher,
             self._child_mac
         )
-        
+
         # Wait for response (short timeout - some devices don't ack)
         try:
             await asyncio.wait_for(self._response_event.wait(), timeout=2.0)
