@@ -103,6 +103,10 @@ class GreeMqttClient:
         self._connected = False
         self._message_handlers: Dict[str, Callable] = {}
         self._receive_task: Optional[asyncio.Task] = None
+        # Optional callback invoked (from the event loop) when the receive loop
+        # exits unexpectedly — i.e. the broker dropped us (e.g. the Gree+ app
+        # stole the single per-account session). Lets the owner reclaim it.
+        self.on_connection_lost: Optional[Callable[[], None]] = None
 
     def _generate_client_id(self) -> str:
         """Generate random client ID"""
@@ -325,7 +329,16 @@ class GreeMqttClient:
             _LOGGER.debug("Message receive task cancelled")
             raise
         except Exception as e:
-            _LOGGER.exception(f"Error in message receive loop: {e}")
+            # The connection died (keepalive timeout, session stolen, network
+            # blip). Mark ourselves disconnected so is_connected reports the
+            # truth, then notify the owner so it can reconnect/reclaim.
+            _LOGGER.warning(f"MQTT receive loop ended (connection lost): {e}")
+            self._connected = False
+            if self.on_connection_lost is not None:
+                try:
+                    self.on_connection_lost()
+                except Exception:
+                    _LOGGER.exception("on_connection_lost callback raised")
 
     def _detect_parent_mac(self, mac: str) -> str:
         """Detect parent MAC from child MAC
