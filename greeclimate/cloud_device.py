@@ -5,7 +5,7 @@ Handles communication with Gree devices via Cloud MQTT broker.
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Callable, Optional, Dict, Any, List
 
 from greeclimate.cipher import CipherV1, CipherV2
 from greeclimate.device import Device, Props
@@ -97,7 +97,12 @@ class CloudDevice(Device):
         # Response handling
         self._response_event: Optional[asyncio.Event] = None
         self._response_data: Optional[Dict] = None
-        
+
+        # Optional callback invoked (in the event loop) after an unsolicited
+        # push updates this device's state, so an owner (e.g. a HA coordinator)
+        # can refresh immediately instead of waiting for the next poll.
+        self._on_state_update: Optional[Callable[[], None]] = None
+
         # Setup message handler
         self._mqtt_client.add_message_handler(self._handle_mqtt_message)
         
@@ -289,6 +294,23 @@ class CloudDevice(Device):
         finally:
             self._response_event = None
     
+    def set_state_update_callback(self, callback: Optional[Callable[[], None]]) -> None:
+        """Register a callback fired after an unsolicited push updates state.
+
+        The owner (e.g. a Home Assistant coordinator) can use this to refresh
+        immediately on a push rather than waiting for the next poll. Called in
+        the event loop from the MQTT receive path; keep it fast and non-blocking.
+        """
+        self._on_state_update = callback
+
+    def _notify_state_update(self) -> None:
+        """Invoke the state-update callback, isolating any error from the loop."""
+        if self._on_state_update is not None:
+            try:
+                self._on_state_update()
+            except Exception:
+                _LOGGER.exception("state-update callback raised")
+
     def _handle_mqtt_message(self, topic: str, message: MqttDeviceMessage) -> None:
         """Handle incoming MQTT messages"""
         # Check if message is for this device
@@ -318,6 +340,7 @@ class CloudDevice(Device):
                                 self._response_data = data
                             else:
                                 self.handle_state_update(**data)
+                                self._notify_state_update()
                 except Exception as e:
                     _LOGGER.debug(f"Could not decrypt response: {e}")
             if self._response_event:
@@ -344,6 +367,7 @@ class CloudDevice(Device):
                         else:
                             # Unsolicited status update
                             self.handle_state_update(**data)
+                            self._notify_state_update()
             
             except Exception as e:
                 _LOGGER.debug(f"Failed to decrypt status message: {e}")
